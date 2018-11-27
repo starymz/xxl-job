@@ -4,13 +4,12 @@ import com.xxl.job.core.biz.AdminBiz;
 import com.xxl.job.core.biz.ExecutorBiz;
 import com.xxl.job.core.biz.impl.ExecutorBizImpl;
 import com.xxl.job.core.handler.IJobHandler;
-import com.xxl.job.core.handler.annotation.JobHandler;
 import com.xxl.job.core.log.XxlJobFileAppender;
 import com.xxl.job.core.thread.ExecutorRegistryThread;
 import com.xxl.job.core.thread.JobLogFileCleanThread;
 import com.xxl.job.core.thread.JobThread;
 import com.xxl.job.core.thread.TriggerCallbackThread;
-import com.xxl.rpc.registry.impl.LocalServiceRegistry;
+import com.xxl.rpc.registry.ServiceRegistry;
 import com.xxl.rpc.remoting.invoker.XxlRpcInvokerFactory;
 import com.xxl.rpc.remoting.invoker.call.CallType;
 import com.xxl.rpc.remoting.invoker.reference.XxlRpcReferenceBean;
@@ -21,24 +20,19 @@ import com.xxl.rpc.util.IpUtil;
 import com.xxl.rpc.util.NetUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.beans.BeansException;
-import org.springframework.context.ApplicationContext;
-import org.springframework.context.ApplicationContextAware;
 
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Map;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Created by xuxueli on 2016/3/2 21:14.
  */
-public class XxlJobExecutor implements ApplicationContextAware {
+public class XxlJobExecutor  {
     private static final Logger logger = LoggerFactory.getLogger(XxlJobExecutor.class);
 
     // ---------------------- param ----------------------
     private String adminAddresses;
-    private static String appName;
+    private String appName;
     private String ip;
     private int port;
     private String accessToken;
@@ -67,16 +61,6 @@ public class XxlJobExecutor implements ApplicationContextAware {
         this.logRetentionDays = logRetentionDays;
     }
 
-    // ---------------------- applicationContext ----------------------
-    private static ApplicationContext applicationContext;
-    @Override
-    public void setApplicationContext(ApplicationContext applicationContext) throws BeansException {
-        this.applicationContext = applicationContext;
-    }
-    public static ApplicationContext getApplicationContext() {
-        return applicationContext;
-    }
-
 
     // ---------------------- start + stop ----------------------
     public void start() throws Exception {
@@ -84,11 +68,9 @@ public class XxlJobExecutor implements ApplicationContextAware {
         // init logpath
         XxlJobFileAppender.initLogPath(logPath);
 
-        // init JobHandler Repository
-        initJobHandlerRepository(applicationContext);
-
         // init admin-client
         initAdminBizList(adminAddresses, accessToken);
+
 
         // init JobLogFileCleanThread
         JobLogFileCleanThread.getInstance().start(logRetentionDays);
@@ -110,6 +92,7 @@ public class XxlJobExecutor implements ApplicationContextAware {
             jobThreadRepository.clear();
         }
 
+
         // destory JobLogFileCleanThread
         JobLogFileCleanThread.getInstance().toStop();
 
@@ -123,18 +106,12 @@ public class XxlJobExecutor implements ApplicationContextAware {
 
     // ---------------------- admin-client (rpc invoker) ----------------------
     private static List<AdminBiz> adminBizList;
-    private static void initAdminBizList(String adminAddresses, String accessToken) throws Exception {
+    private void initAdminBizList(String adminAddresses, String accessToken) throws Exception {
         if (adminAddresses!=null && adminAddresses.trim().length()>0) {
             for (String address: adminAddresses.trim().split(",")) {
                 if (address!=null && address.trim().length()>0) {
 
                     String addressUrl = address.concat(AdminBiz.MAPPING);
-                    if (addressUrl.startsWith("http://")) {
-                        addressUrl = addressUrl.replace("http://", "");
-                    }
-                    if (addressUrl.startsWith("https://")) {
-                        addressUrl = addressUrl.replace("https://", "");
-                    }
 
                     AdminBiz adminBiz = (AdminBiz) new XxlRpcReferenceBean(NetEnum.JETTY, Serializer.SerializeEnum.HESSIAN.getSerializer(), CallType.SYNC,
                             AdminBiz.class, null, 10000, addressUrl, accessToken, null).getObject();
@@ -155,13 +132,19 @@ public class XxlJobExecutor implements ApplicationContextAware {
     // ---------------------- executor-server (rpc provider) ----------------------
     private XxlRpcInvokerFactory xxlRpcInvokerFactory = null;
     private XxlRpcProviderFactory xxlRpcProviderFactory = null;
+
     private void initRpcProvider(String ip, int port, String appName, String accessToken) throws Exception {
         // init invoker factory
         xxlRpcInvokerFactory = new XxlRpcInvokerFactory();
 
         // init, provider factory
+        String address = IpUtil.getIpPort(ip, port);
+        Map<String, String> serviceRegistryParam = new HashMap<String, String>();
+        serviceRegistryParam.put("appName", appName);
+        serviceRegistryParam.put("address", address);
+
         xxlRpcProviderFactory = new XxlRpcProviderFactory();
-        xxlRpcProviderFactory.initConfig(NetEnum.JETTY, Serializer.SerializeEnum.HESSIAN.getSerializer(), ip, port, accessToken, ExecutorServiceRegistry.class, null);
+        xxlRpcProviderFactory.initConfig(NetEnum.JETTY, Serializer.SerializeEnum.HESSIAN.getSerializer(), ip, port, accessToken, ExecutorServiceRegistry.class, serviceRegistryParam);
 
         // add services
         xxlRpcProviderFactory.addService(ExecutorBiz.class.getName(), null, new ExecutorBizImpl());
@@ -171,25 +154,32 @@ public class XxlJobExecutor implements ApplicationContextAware {
 
     }
 
-    public static class ExecutorServiceRegistry extends LocalServiceRegistry {
+    public static class ExecutorServiceRegistry extends ServiceRegistry {
+
         @Override
-        public boolean registry(String key, String value) {
-
+        public void start(Map<String, String> param) {
             // start registry
-            if (ExecutorBiz.class.getName().equalsIgnoreCase(key)) {
-                ExecutorRegistryThread.getInstance().start(appName, value);
-            }
-
-            return super.registry(key, value);
+            ExecutorRegistryThread.getInstance().start(param.get("appName"), param.get("address"));
         }
-
         @Override
         public void stop() {
             // stop registry
             ExecutorRegistryThread.getInstance().toStop();
-
-            super.stop();
         }
+
+        @Override
+        public boolean registry(String key, String value) {
+            return false;
+        }
+        @Override
+        public boolean remove(String key, String value) {
+            return false;
+        }
+        @Override
+        public TreeSet<String> discovery(String key) {
+            return null;
+        }
+
     }
 
     private void stopRpcProvider() {
@@ -216,27 +206,6 @@ public class XxlJobExecutor implements ApplicationContextAware {
     }
     public static IJobHandler loadJobHandler(String name){
         return jobHandlerRepository.get(name);
-    }
-    private static void initJobHandlerRepository(ApplicationContext applicationContext){
-        if (applicationContext == null) {
-            return;
-        }
-
-        // init job handler action
-        Map<String, Object> serviceBeanMap = applicationContext.getBeansWithAnnotation(JobHandler.class);
-
-        if (serviceBeanMap!=null && serviceBeanMap.size()>0) {
-            for (Object serviceBean : serviceBeanMap.values()) {
-                if (serviceBean instanceof IJobHandler){
-                    String name = serviceBean.getClass().getAnnotation(JobHandler.class).value();
-                    IJobHandler handler = (IJobHandler) serviceBean;
-                    if (loadJobHandler(name) != null) {
-                        throw new RuntimeException("xxl-job jobhandler naming conflicts.");
-                    }
-                    registJobHandler(name, handler);
-                }
-            }
-        }
     }
 
 
