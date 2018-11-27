@@ -10,6 +10,7 @@ import com.xxl.job.core.glue.GlueFactory;
 import com.xxl.job.core.glue.GlueTypeEnum;
 import com.xxl.job.core.handler.IJobHandler;
 import com.xxl.job.core.handler.impl.GlueJobHandler;
+import com.xxl.job.core.handler.impl.ProcedureJobHandler;
 import com.xxl.job.core.handler.impl.ScriptJobHandler;
 import com.xxl.job.core.log.XxlJobFileAppender;
 import com.xxl.job.core.thread.JobThread;
@@ -120,6 +121,31 @@ public class ExecutorBizImpl implements ExecutorBiz {
                     return new ReturnT<String>(ReturnT.FAIL_CODE, e.getMessage());
                 }
             }
+        } else if(GlueTypeEnum.PROCEDURE == glueTypeEnum){
+
+            // valid old jobThread
+            if (jobThread != null &&
+                    !(jobThread.getHandler() instanceof ProcedureJobHandler
+                            && ((ProcedureJobHandler) jobThread.getHandler()).getIdentify()== triggerParam.getExecutorHandler())) {
+                // change script or gluesource updated, need kill old thread
+                removeOldReason = "change job datasource or procedure or glue type, and terminate the old job thread.";
+
+                jobThread = null;
+                jobHandler = null;
+            }
+
+            // valid handler
+            if (jobHandler == null) {
+                String procedureStr = triggerParam.getExecutorHandler();
+
+                if(procedureStr.indexOf(".") != -1){
+                    String[] items = procedureStr.split(".");
+                    jobHandler = new ProcedureJobHandler(items[0],items[1]);
+                }else{
+                    jobHandler = new ProcedureJobHandler(procedureStr);
+                }
+            }
+
         } else if (glueTypeEnum!=null && glueTypeEnum.isScript()) {
 
             // valid old jobThread

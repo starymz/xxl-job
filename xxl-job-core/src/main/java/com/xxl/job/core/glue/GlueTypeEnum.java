@@ -11,7 +11,9 @@ public enum GlueTypeEnum {
     GLUE_PYTHON("GLUE(Python)", true, "python", ".py"),
     GLUE_PHP("GLUE(PHP)", true, "php", ".php"),
     GLUE_NODEJS("GLUE(Nodejs)", true, "node", ".js"),
-    GLUE_POWERSHELL("GLUE(PowerShell)", true, "powershell ", ".ps1");
+    GLUE_POWERSHELL("GLUE(PowerShell)", true, "powershell ", ".ps1"),
+    PROCEDURE("PROCEDURE",false,null,null);
+
 
     private String desc;
     private boolean isScript;

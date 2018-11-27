@@ -124,7 +124,7 @@ $(function() {
 	                			
 	                			// log url
 	                			var codeBtn = "";
-                                if ('BEAN' != row.glueType) {
+                                if ('BEAN' != row.glueType && 'PROCEDURE' != row.glueType) {
 									var codeUrl = base_url +'/jobcode?jobId='+ row.id;
 									codeBtn = '<button class="btn btn-warning btn-xs" type="button" onclick="javascript:window.open(\'' + codeUrl + '\')" >GLUE</button>  '
 								}
@@ -404,7 +404,7 @@ $(function() {
 		// executorHandler
         var $executorHandler = $(this).parents("form").find("input[name='executorHandler']");
         var glueType = $(this).val();
-        if ('BEAN' != glueType) {
+        if ('BEAN' != glueType && 'PROCEDURE' != glueType) {
             $executorHandler.val("");
             $executorHandler.attr("readonly","readonly");
         } else {
